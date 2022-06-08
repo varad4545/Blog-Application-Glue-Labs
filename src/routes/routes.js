@@ -11,6 +11,7 @@ require("../auth/passport");
 const userRoutes=require("./userRoutes")
 const blogroutes=require("./blogroutes")
 const adminRoutes=require("./adminroutes")
+
 router.use('/',userRoutes)
 router.use('/',blogroutes)
 router.use('/',adminRoutes)

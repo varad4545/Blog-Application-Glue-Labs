@@ -12,7 +12,7 @@ require("dotenv").config();
 require("../auth/passport");
 const swaggerJsDocs=require('swagger-jsdoc')
 
- function generateAccessToken(user) {
+function generateAccessToken(user) {
   return jwt.sign(user, process.env.ACCESS_TOKEN_KEY, { expiresIn: "8h" });
 }
 

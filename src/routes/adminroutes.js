@@ -41,7 +41,6 @@ router.get("/admin/getusers/:id",authAdminAccess(),authToken,async (req, res) =>
 //get all blogs
 router.get("/admin/getblogs/:id",authAdminAccess(),authToken,async (req, res) => {
     let getCacheData = await redisClient.get("blogsforAdmin");
-    console.log(typeof getCacheData);
     if (getCacheData) {
       console.log("Cache Hit");
       return res.json(JSON.parse(getCacheData));

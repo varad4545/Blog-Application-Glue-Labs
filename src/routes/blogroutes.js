@@ -18,7 +18,6 @@ router.get("/basic/getblog/:id", authBasic(), authToken, async (req, res) => {
   const id = req.params.id;
   const body = req.body;
   let getCacheData = await redisClient.get("blog");
-  console.log(typeof getCacheData);
   if (getCacheData) {
     console.log("Cache Hit");
     return res.json(JSON.parse(getCacheData));
@@ -45,8 +44,6 @@ router.get(
     const id = req.params.id;
     const body = req.body;
     let getCacheData = await redisClient.get("blogs");
-    console.log(typeof getCacheData);
-
     if (getCacheData) {
       console.log("Cache Hit");
       return res.json(JSON.parse(getCacheData));
