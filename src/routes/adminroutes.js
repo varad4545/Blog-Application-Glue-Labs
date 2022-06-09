@@ -8,6 +8,7 @@ const passport = require("passport");
 const {authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
 const {validateDeleteuserAdmin,validateUpdateuserAdmin} = require("../middlewares/JoiValidatemiddleware");
 const logger = require("../../utils/logger");
+const {sendEmailPassword}=require("../../utils/CronSendEmailTo")
 require("dotenv").config();
 require("../auth/passport");
 const swaggerUi = require("swagger-ui-express");
@@ -112,6 +113,25 @@ router.put(
       }
     } else {
       res.status(400).send("User not found");
+    }
+  }
+);
+
+//Periodic password change warning
+router.get("/admin/PasswordWarning/:id",authAdminAccess(),async (req, res) => {
+    let allusers = await users.findAll({ where: { role: "basic" } });
+    allusers = JSON.stringify(allusers);
+    allusers = JSON.parse(allusers);
+    const emails = [];
+    allusers.map((user) => {
+      console.log(user.createdAt);
+      emails.push(user.email);
+    });
+    console.log(emails);
+    if (allusers) {
+      sendEmailPassword(emails);
+    } else {
+      res.status(200).send("No basic users found");
     }
   }
 );

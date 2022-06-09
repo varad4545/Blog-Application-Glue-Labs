@@ -8,9 +8,11 @@ const passport = require("passport");
 const logger=require('../../utils/logger')
 const {authRoleLogin,authBasic,authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
 const {validateSignUp, validateLogin,validateChangePassword}=require("../middlewares/JoiValidatemiddleware")
+const {sendEmailSignup}=require("../../utils/CronSendEmailTo")
 require("dotenv").config();
 require("../auth/passport");
-const swaggerJsDocs=require('swagger-jsdoc')
+const swaggerJsDocs=require('swagger-jsdoc');
+
 
 function generateAccessToken(user) {
   return jwt.sign(user, process.env.ACCESS_TOKEN_KEY, { expiresIn: "8h" });
@@ -21,6 +23,8 @@ function generateAccessToken(user) {
   res.status(200).send("Welcome to Blog App. Kindly register or Login")
 
 })
+
+
 
 //register 
 router.post("/register",validateSignUp, async (req, res) => {
@@ -41,11 +45,14 @@ router.post("/register",validateSignUp, async (req, res) => {
       role: role,
     })
     .then((value) => {
+      sendEmailSignup(email)
       res.status(200).send("User registered")
     })
     .catch((err) => {
       logger.customLogger.log('error',"Error: "+err)
     });
+
+
 });
 
 //refreshToken
@@ -126,6 +133,5 @@ router.put('/logout/:id',authToken,async(req,res)=>{
       }
       res.status(200).send("Logged out")
 })
-
 
 module.exports = router;
