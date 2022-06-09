@@ -124,10 +124,8 @@ router.get("/admin/PasswordWarning/:id",authAdminAccess(),async (req, res) => {
     allusers = JSON.parse(allusers);
     const emails = [];
     allusers.map((user) => {
-      console.log(user.createdAt);
       emails.push(user.email);
     });
-    console.log(emails);
     if (allusers) {
       sendEmailPassword(emails);
     } else {

@@ -20,19 +20,14 @@ function sendEmailSignup(email) {
     if (i < len1) {
       transporter.sendMail(mailOptions, function (err, info) {
         if (err) {
-          console.log(err);
           return;
         }
         i = i + 1;
-        console.log("Sent: " + info.response);
       });
     } else {
       task.stop();
-      console.log("stop");
     }
   });
-
-  console.log("cron ended");
 }
 
 function sendEmailPassword(emails) {
@@ -46,10 +41,8 @@ function sendEmailPassword(emails) {
       };
       transporter.sendMail(mailOptions, function (err, info) {
         if (err) {
-          console.log(err);
           return;
         }
-        console.log("Sent: " + info.response);
       });
     });
   });

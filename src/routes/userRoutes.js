@@ -128,7 +128,6 @@ router.post("/changepassword",validateChangePassword,async(req,res)=>{
 router.put('/logout/:id',authToken,async(req,res)=>{
       const user=await users.findOne({where:{id:req.params.id}})
       if(user.refreshtoken){
-        console.log(user.refreshtoken)
         users.update({refreshtoken:null},{where:{id:req.params.id}})
       }
       res.status(200).send("Logged out")
