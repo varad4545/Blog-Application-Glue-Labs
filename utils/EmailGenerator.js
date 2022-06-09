@@ -1,9 +1,11 @@
 const nodemailer = require("nodemailer");
+require("dotenv").config();
+
 const transporter = nodemailer.createTransport({
   service: "hotmail",
   auth: {
-    user: "vibranode@outlook.com",
-    pass: "vibra2090vano",
+    user: process.env.SEND_EMAIL,
+    pass: process.env.SEND_PASSWORD,
   },
 });
 

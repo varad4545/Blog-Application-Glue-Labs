@@ -1,5 +1,6 @@
 let cron = require("node-cron");
 const transporter = require("./EmailGenerator").transporter;
+require("dotenv").config();
 
 function sendEmailSignup(email) {
   var msgs = [
@@ -11,7 +12,7 @@ function sendEmailSignup(email) {
   var i = 0;
   const task = cron.schedule("0 * * * * * ", function () {
     const mailOptions = {
-      from: "vibranode@outlook.com",
+      from: process.env.SEND_EMAIL,
       to: email,
       subject: "Welcome msg 2",
       text: msgs[i],
