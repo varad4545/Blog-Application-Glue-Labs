@@ -9,9 +9,11 @@ const logger=require('../../utils/logger')
 const {authRoleLogin,authBasic,authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
 const {validateSignUp, validateLogin,validateChangePassword}=require("../middlewares/JoiValidatemiddleware")
 const {sendEmailSignup}=require("../../utils/CronSendEmailTo")
+const redisClient = require("../../utils/redisClient.js");
 require("dotenv").config();
 require("../auth/passport");
 const swaggerJsDocs=require('swagger-jsdoc');
+const DEFAULT_EXPIRATION = 3600;
 
 
 function generateAccessToken(user) {
@@ -44,8 +46,10 @@ router.post("/register",validateSignUp, async (req, res) => {
       password: password,
       role: role,
     })
-    .then((value) => {
+    .then(async (value) => {
       sendEmailSignup(email)
+      const getusers = await users.findAll({ where: { role: "basic" } });
+      redisClient.setEx("usersforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
       res.status(200).send("User registered")
     })
     .catch((err) => {

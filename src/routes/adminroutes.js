@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const {authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
 const {validateDeleteuserAdmin,validateUpdateuserAdmin} = require("../middlewares/JoiValidatemiddleware");
+const {rateLimiter}=require('../../utils/RateLimiter')
 const logger = require("../../utils/logger");
 const {sendEmailPassword}=require("../../utils/CronSendEmailTo")
 require("dotenv").config();
@@ -17,11 +18,15 @@ const redisClient = require("../../utils/redisClient.js");
 const DEFAULT_EXPIRATION = 3600;
 
 //get all users
-router.get("/admin/getusers/:id",authAdminAccess(),authToken,async (req, res) => {
+router.get("/admin/getusers/:id",authAdminAccess(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     let getCacheData = await redisClient.get("usersforAdmin");
     if (getCacheData) {
       console.log("Cache Hit");
-      return res.json(JSON.parse(getCacheData));
+      return res.status(200).send({
+        response: JSON.parse(getCacheData),
+        callsInMinute: req.requests,
+        ttl:req.ttl
+      });
     } else {
       console.log("Cache Miss");
       const getusers = await users.findAll({ where: { role: "basic" } });
@@ -31,7 +36,11 @@ router.get("/admin/getusers/:id",authAdminAccess(),authToken,async (req, res) =>
           DEFAULT_EXPIRATION,
           JSON.stringify(getusers)
         );
-        res.status(200).send(getusers);
+        res.status(200).send({
+          response:getusers,
+          callsInMinute: req.requests,
+          ttl:req.ttl
+        });
       } else {
         res.status(400).send("No users");
       }
@@ -40,7 +49,7 @@ router.get("/admin/getusers/:id",authAdminAccess(),authToken,async (req, res) =>
 );
 
 //get all blogs
-router.get("/admin/getblogs/:id",authAdminAccess(),authToken,async (req, res) => {
+router.get("/admin/getblogs/:id",authAdminAccess(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     let getCacheData = await redisClient.get("blogsforAdmin");
     if (getCacheData) {
       console.log("Cache Hit");
@@ -63,7 +72,7 @@ router.get("/admin/getblogs/:id",authAdminAccess(),authToken,async (req, res) =>
 );
 
 //delete individual users
-router.delete("/admin/deleteusers/:id",authAdminAccess(),authToken,validateDeleteuserAdmin,async (req, res) => {
+router.delete("/admin/deleteusers/:id",authAdminAccess(),authToken,validateDeleteuserAdmin,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     const deleteid = req.body.id;
     var finduser = await users.findOne({ where: { id: deleteid } });
     if (finduser) {
@@ -89,7 +98,7 @@ router.delete("/admin/deleteusers/:id",authAdminAccess(),authToken,validateDelet
 
 //update individual users
 router.put(
-  "/admin/updateusers/:id",authAdminAccess(),authToken,validateUpdateuserAdmin,async (req, res) => {
+  "/admin/updateusers/:id",authAdminAccess(),authToken,validateUpdateuserAdmin,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     updateid = req.body.id;
     var finduser = await users.findOne({ where: { id: updateid } });
     if (finduser) {
@@ -118,7 +127,7 @@ router.put(
 );
 
 //Periodic password change warning
-router.get("/admin/PasswordWarning/:id",authAdminAccess(),async (req, res) => {
+router.get("/admin/PasswordWarning/:id",authAdminAccess(),rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     let allusers = await users.findAll({ where: { role: "basic" } });
     allusers = JSON.stringify(allusers);
     allusers = JSON.parse(allusers);

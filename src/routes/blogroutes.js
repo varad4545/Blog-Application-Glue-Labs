@@ -8,13 +8,14 @@ const passport = require("passport");
 const logger=require('../../utils/logger')
 const {authToken,authBasic} = require("../middlewares/authmiddlewares");
 const {validateUserPost,validateDeleteUserPost}=require("../middlewares/JoiValidatemiddleware")
+const {rateLimiter}=require('../../utils/RateLimiter')
 require("dotenv").config();
 require("../auth/passport");
 const redisClient=require('../../utils/redisClient.js')
 const DEFAULT_EXPIRATION=3600
 
 //get individual blogs
-router.get("/basic/getblog/:id", authBasic(), authToken, async (req, res) => {
+router.get("/basic/getblog/:id", authBasic(), authToken,rateLimiter({secondsWindow:60,allowedHits:5}), async (req, res) => {
   const id = req.params.id;
   const body = req.body;
   let getCacheData = await redisClient.get("blog");
@@ -40,7 +41,7 @@ router.get("/basic/getblog/:id", authBasic(), authToken, async (req, res) => {
 
 //get all blogs of a user
 router.get(
-  "/basic/getallblogs/:id",authBasic(),authToken,async (req, res) => {
+  "/basic/getallblogs/:id",authBasic(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     const id = req.params.id;
     const body = req.body;
     let getCacheData = await redisClient.get("blogs");
@@ -53,14 +54,14 @@ router.get(
       const getEntry = locateEntry.toJSON();
       const getPost = getEntry.post;
       var setPost = JSON.parse(getPost);
-      redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(setPost));
+      redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
       res.status(200).send(setPost);
     }
   }
 );
 
 //post blogs
-router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,async (req, res) => {
+router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     const id = req.params.id;
     const body = req.body;
     const locateEntry = await blog.findOne({ where: { id: id } });
@@ -80,11 +81,14 @@ router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,async (
           },
           { where: { id: id } }
         )
-        .then((value) => {
+        .then(async (value) => {
+         const getusers = await blog.findAll();
+         redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
+         redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
          res.status(200).send("Blog added")
         })
         .catch((error) => {
-          logger.customLogger.log('error',"Error: "+err)
+          logger.customLogger.log('error',"Error: "+error)
         });
     } else {
       const locatefromUser = await users.findOne({ where: { id: id } });
@@ -100,7 +104,13 @@ router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,async (
           email: getEmail,
           post: pusharray,
         })
-        .then((value) => {
+        .then(async (value) => {
+          const getusers = await blog.findAll();
+          redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
+          const getEntry = locateEntry.toJSON();
+          const getPost = getEntry.post;
+          var setPost = JSON.parse(getPost);
+          redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
           res.status(200).send("Blog posted")
         })
         .catch((err) => {
@@ -111,7 +121,7 @@ router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,async (
 );
 
 //delete individual blog
-router.delete("/basic/deleteblog/:id",authBasic(),authToken,validateDeleteUserPost,async (req, res) => {
+router.delete("/basic/deleteblog/:id",authBasic(),authToken,validateDeleteUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     const id = req.params.id;
     const body = req.body;
     const locateEntry = await blog.findOne({ where: { id: id } });
@@ -143,7 +153,7 @@ router.delete("/basic/deleteblog/:id",authBasic(),authToken,validateDeleteUserPo
 );
 
 //update individual blog
-router.put("/basic/updateblog/:id",authBasic(),authToken,validateUserPost,async (req, res) => {
+router.put("/basic/updateblog/:id",authBasic(),authToken,validateUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
     const id = req.params.id;
     const body = req.body;
     const locateEntry = await blog.findOne({ where: { id: id } });
@@ -165,7 +175,14 @@ router.put("/basic/updateblog/:id",authBasic(),authToken,validateUserPost,async 
         },
         { where: { id: id } }
       )
-      .then((value) => {
+      .then(async(value) => {
+        const getusers = await blog.findAll();
+        redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
+        const locateEntry = await blog.findOne({ where: { id: id } });
+        const getEntry = locateEntry.toJSON();
+        const getPost = getEntry.post;
+        var setPost = JSON.parse(getPost);
+        redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
         res.status(200).send("Blog updated")
       })
       .catch((err) => {
