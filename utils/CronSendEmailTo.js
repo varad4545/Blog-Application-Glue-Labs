@@ -1,32 +1,23 @@
 let cron = require("node-cron");
 const transporter = require("./EmailGenerator").transporter;
+const logger=require('./logger')
 require("dotenv").config();
 
 function sendEmailSignup(email) {
-  var msgs = [
-    "Welcome to Blog Application. Now you can explore all the features ",
-    "You can add blogs",
-    "You can update blogs",
-  ];
-  var len1 = msgs.length;
-  var i = 0;
-  const task = cron.schedule("0 * * * * * ", function () {
-    const mailOptions = {
-      from: process.env.SEND_EMAIL,
-      to: email,
-      subject: "Welcome msg 2",
-      text: msgs[i],
-    };
-
-    if (i < len1) {
-      transporter.sendMail(mailOptions, function (err, info) {
-        if (err) {
-          return;
-        }
-        i = i + 1;
-      });
+  var msg ="Welcome to Blog Application. Now you can explore all the features ";
+  const mailOptions = {
+    from: process.env.SEND_EMAIL,
+    to: email,
+    subject: "Welcome msg ",
+    text: msg,
+  };
+  transporter.sendMail(mailOptions, function (err, info) {
+    if (err) {
+      logger.customLogger.log("error", "Error: " + err);
+      console.log(err);
+      return;
     } else {
-      task.stop();
+      logger.customLogger.log("info", "Email successfully sent: " + info);
     }
   });
 }
@@ -42,7 +33,11 @@ function sendEmailPassword(emails) {
       };
       transporter.sendMail(mailOptions, function (err, info) {
         if (err) {
+          logger.customLogger.log('error',"Error: "+err)
           return;
+        }
+        else{
+          logger.customLogger.log("Email successfully sent: ",info)
         }
       });
     });

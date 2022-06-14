@@ -9,10 +9,12 @@ const logger=require('../../utils/logger')
 const {authRoleLogin,authBasic,authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
 const {validateSignUp, validateLogin,validateChangePassword}=require("../middlewares/JoiValidatemiddleware")
 const {sendEmailSignup}=require("../../utils/CronSendEmailTo")
+const {mailqueue}=require("../../utils/BullQueue")
 const redisClient = require("../../utils/redisClient.js");
 require("dotenv").config();
 require("../auth/passport");
 const swaggerJsDocs=require('swagger-jsdoc');
+const Bull = require("bull");
 const DEFAULT_EXPIRATION = 3600;
 
 
@@ -47,7 +49,21 @@ router.post("/register",validateSignUp, async (req, res) => {
       role: role,
     })
     .then(async (value) => {
-      sendEmailSignup(email)
+      mailqueue(email)
+      // const sendQueue=new Bull("first-queue")
+      // const data={
+      //   email:email
+      // }
+      // const options={
+      //   delay:60000,
+      //   attempts:2
+      // }
+      // sendQueue.add(data,options)
+      // sendQueue.process(async (job)=>{
+      //   console.log("sent mail yo")
+      //   return await sendEmailSignup(job.data.email);
+      // })
+      // sendEmailSignup(email)
       const getusers = await users.findAll({ where: { role: "basic" } });
       redisClient.setEx("usersforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
       res.status(200).send("User registered")
