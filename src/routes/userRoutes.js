@@ -44,7 +44,7 @@ router.post("/register", validateSignUp, async (req, res) => {
       logger.customLogger.log("error", "Error: " + err);
     });
   if (alreadyExistUser) {
-    return res.send("User with Email exists");
+    return res.status(200).send("User with Email exists");
   }
   users
     .create({
@@ -125,11 +125,14 @@ router.post("/changepassword", validateChangePassword, async (req, res) => {
   const locateEntry = await users.findOne({ where: { email: body.email } });
   const getEntry = locateEntry.toJSON();
   const oldpassword = getEntry.password;
-  if (oldpassword === body.oldpassword) {
+  console.log(oldpassword)
+  console.log(body.oldpassword)
+  if (await bcrypt.compare(body.oldpassword, oldpassword)) {
+    const hashedPassword = await bcrypt.hash(body.newpassword, 10);
     users
       .update(
         {
-          password: body.newpassword,
+          password: hashedPassword,
         },
         { where: { id: getEntry.id } }
       )
