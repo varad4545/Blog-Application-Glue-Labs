@@ -5,8 +5,8 @@ const router = express.Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
-const {authAdminAccess,authToken} = require("../middlewares/authmiddlewares");
-const {validateDeleteuserAdmin,validateUpdateuserAdmin} = require("../middlewares/JoiValidatemiddleware");
+const {authRole,authToken} = require("../middlewares/authmiddlewares");
+const {userSchemaValidator,blogSchemaValidator} = require("../middlewares/JoiValidatemiddleware");
 const {rateLimiter}=require('../../utils/RateLimiter')
 const logger = require("../../utils/logger");
 const {sendEmailPassword}=require("../../utils/CronSendEmailTo")
@@ -18,126 +18,145 @@ const redisClient = require("../../utils/redisClient.js");
 const DEFAULT_EXPIRATION = 3600;
 
 //get all users
-router.get("/admin/getusers/:id",authAdminAccess(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    let getCacheData = await redisClient.get("usersforAdmin");
-    if (getCacheData) {
-      console.log("Cache Hit");
-      return res.status(200).send({
-        response: JSON.parse(getCacheData),
-        callsInMinute: req.requests,
-        ttl:req.ttl
-      });
-    } else {
-      console.log("Cache Miss");
-      const getusers = await users.findAll({ where: { role: "basic" } });
-      if (getusers) {
-        redisClient.setEx(
-          "usersforAdmin",
-          DEFAULT_EXPIRATION,
-          JSON.stringify(getusers)
-        );
-        res.status(200).send({
-          response:getusers,
-          callsInMinute: req.requests,
-          ttl:req.ttl
-        });
-      } else {
-        res.status(400).send("No users");
+router.get("/admin/getusers/:id",authRole('admin'),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    try
+    {
+      let data = await redisClient.get("usersforAdmin");
+      if(data)
+      {
+        return res.json(JSON.parse(data));
       }
+      else
+      {
+        await users.findAll({ where:{ 
+          role: "basic" 
+        }})
+        .then((user) => {
+          redisClient.setEx("usersforAdmin",DEFAULT_EXPIRATION,JSON.stringify(user));
+          res.status(200).send(user);
+        })
+      }
+    }
+    catch(err)
+    {
+      logger.customLogger.log('error','Error: ',err)
+      res.status(500).send(err);
     }
   }
 );
 
 //get all blogs
-router.get("/admin/getblogs/:id",authAdminAccess(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    let getCacheData = await redisClient.get("blogsforAdmin");
-    if (getCacheData) {
-      console.log("Cache Hit");
-      return res.json(JSON.parse(getCacheData));
-    } else {
-      console.log("Cache Miss");
-      const getusers = await blog.findAll();
-      if (getusers) {
-        redisClient.setEx(
-          "blogsforAdmin",
-          DEFAULT_EXPIRATION,
-          JSON.stringify(getusers)
-        );
-        res.status(200).send(getusers);
-      } else {
-        res.status(400).send("No Blogs");
+router.get("/admin/getblogs/:id",authRole('admin'),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    try
+    {
+      let data = await redisClient.get("blogsforAdmin");
+      if (data)
+      {
+        return res.json(JSON.parse(data));
       }
+      else
+      {
+        await blog.findAll()
+        .then((user) => {
+          redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(user));
+          res.status(200).send(user);
+        })
+      }
+    }
+    catch(err)
+    {
+      logger.customLogger.log('error','Error: ',err)
+      res.status(500).send(err);
     }
   }
 );
 
 //delete individual users
-router.delete("/admin/deleteusers/:id",authAdminAccess(),authToken,validateDeleteuserAdmin,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    const deleteid = req.body.id;
-    var finduser = await users.findOne({ where: { id: deleteid } });
-    if (finduser) {
-      finduser = finduser.toJSON();
-      if (finduser.role === "admin") {
-        res.send("Other Admins cannot be deleted");
-      } else {
-        users
-          .destroy({ where: { id: deleteid } })
-          .then((data) => {
-            blog.destroy({ where: { id: deleteid } });
-            res.status(200).send("User deleted");
-          })
-          .catch((err) => {
-            res.status(400).send("Error: ", err);
-          });
-      }
-    } else {
-      res.status(400).send("User not found");
+router.delete("/admin/deleteusers/:id",authRole('admin'),authToken,userSchemaValidator,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    try
+    {
+      const delete_id = req.body.id;
+      await users.findOne({ where: { id: delete_id, role: "basic" }})
+        .then(async (user) => {
+          if (!user)
+          {
+            return res.status(404).send("No User Found");
+          }
+  
+          blog.findOne({ where: { userId: delete_id } })
+            .then(async (blogData) => {
+              if (!blogData)
+              {
+                users.destroy({ where: { id: delete_id } }).then((value) => {
+                  return res.status(200).send(`User Deleted`);
+                });
+              }
+              else
+              {
+                blog.destroy({ where: { userId: delete_id } }).then(() => {
+                  users.destroy({ where: { id: delete_id } }).then((value) => {
+                    return res.status(200).send(`User Deleted`);
+                  });
+                });
+              }
+
+            });
+        });
+    }
+    catch(err)
+    {
+        logger.customLogger.log("error", "Error: ", err);
+        res.status(500).send(err);
     }
   }
 );
 
 //update individual users
 router.put(
-  "/admin/updateusers/:id",authAdminAccess(),authToken,validateUpdateuserAdmin,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    updateid = req.body.id;
-    var finduser = await users.findOne({ where: { id: updateid } });
-    if (finduser) {
-      finduser = finduser.toJSON();
-      if (finduser.role === "admin") {
-        res.status(403).send("Other Admins cannot be updated");
-      } else {
-        const updatedData = {
-          id: updateid,
-          email: req.body.email,
+  "/admin/updateusers/:id",authRole('admin'),authToken,userSchemaValidator,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    try
+    {
+      const user_id = req.body.id;
+      await users.findOne({ where: { id: user_id, role: 'basic' } })
+      .then( async (finduser)=>{
+        if(!finduser){
+          return res.sendStatus(404);
+        }
+        
+        const data = {
+          email: req.body.email,  
         };
-        users
-          .update(updatedData, { where: { id: updateid } })
-          .then((data) => {
-            blog.update(updatedData, { where: { id: updateid } });
-            res.status(200).send("Updated User data");
-          })
-          .catch((err) => {
-            res.status(400).send("Error: ", err);
-          });
-      }
-    } else {
-      res.status(400).send("User not found");
+  
+        await users.update(data, { where: { id: user_id } })
+        .then((value) => {
+          res.status(200).send(`Updated User`)
+        })
+      })
+    }
+    catch(err)
+    {
+      logger.customLogger.log('error','Error: ',err)
+      res.status(500).send(err);
     }
   }
 );
 
 //Periodic password change warning
-router.get("/admin/PasswordWarning/:id",authAdminAccess(),rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    let allusers = await users.findAll({ where: { role: "basic" } });
+router.get("/admin/PasswordWarning/:id",authRole('admin'),rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    let allusers = await users.findAll({ where: { role: "basic" }});
     allusers = JSON.stringify(allusers);
     allusers = JSON.parse(allusers);
     const emails = [];
+
     allusers.map((user) => {
       emails.push(user.email);
     });
-    if (allusers) {
+
+    if (allusers)
+    {
       sendEmailPassword(emails);
-    } else {
+    }else
+    {
       res.status(200).send("No basic users found");
     }
   }

@@ -1,79 +1,120 @@
 const {
-  GraphQLSchema,
   GraphQLObjectType,
   GraphQLString,
   GraphQLList,
   GraphQLInt,
   GraphQLNonNull,
-  GraphQLInputObjectType,
 } = require("graphql");
 const users = require("../../models").users;
 const blog = require("../../models").blogposts;
 
-const { blogType, userType } = require("./types");
+const { blogType, userType, getMsgType,getallblogsType } = require("./types");
 
 const RootQueryType = new GraphQLObjectType({
   name: "Query",
   description: "Root Query",
   fields: () => ({
-    admingetbasicusers: {
+
+    //Admin can get all user info
+    admingetbasicusers:
+    {
       type: new GraphQLList(userType),
       description: "List of all basic users",
-      resolve: () => {
-        const getusers = users.findAll({ where: { role: "basic" } });
-        return getusers;
+      resolve: async () =>
+      {
+         let getusers;
+         await users.findAll({ where: { role: "basic" } })
+         .then((data)=>{
+           if(data.length===0)
+           {
+             throw new Error("No users Found");
+           }
+           getusers=data
+         })
+         return getusers
+       
       },
     },
-    admingetallblogs: {
+
+    //admin can get all blogs info
+    admingetallblogs:
+    {
       type: new GraphQLList(blogType),
       description: "List of all blogs",
-      resolve: () => {
-        const getblogs = blog.findAll();
-        return getblogs;
+      resolve: async() =>
+      {
+         let setpost
+         await blog.findAll()
+         .then((data)=>{
+           if(data.length===0)
+           {
+            throw new Error("No Blogs Found");
+           }
+           setpost=data
+         })
+
+         return setpost
       },
     },
-    basicgetblog: {
-      type: blogType,
+
+    //users can access their blogs individually
+    basicgetblog:
+    {
+      type: getMsgType,
       description: "Access individual blogs",
-      args: {
+      args:
+      {
         id: { type: GraphQLNonNull(GraphQLInt) },
         title: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parent, args) => {
-        let locateuser = await blog.findOne({ where: { id: args.id } });
-        let getuser = locateuser.toJSON();
-        let getPost = getuser.post;
-        var setPost = JSON.parse(getPost);
-        setPost = setPost.filter((user) => {
-          if (user["title"] === args.title) {
-            return 1;
-          }
-        });
-        setPost = JSON.stringify(setPost);
-        const getfinalpost = {
-          post: setPost,
-        };
-        return getfinalpost;
-      },
+      resolve: async (parent, args) =>
+      {
+          let setPost
+          await blog.findOne({ where: { userId: args.id, title:args.title } }).
+          then((data)=>
+          {
+              setPost=data.post
+          })
+          .catch(()=>{
+            throw new Error("Blog not Found");
+          })
+          return {post:setPost}
+       },
     },
-    basicallBlogs: {
-      type: blogType,
+
+    //users can access all their blogs
+    basicallBlogs:
+    {
+      type: GraphQLList(getallblogsType),
       description: "List of all all blogs of users",
       args: {
         id: { type: GraphQLNonNull(GraphQLInt) },
       },
-      resolve: async (parent, args) => {
-        let locateuser = await blog.findOne({ where: { id: args.id } });
-        let getuser = locateuser.toJSON();
-        let getPost = getuser.post;
-        var setPost = JSON.parse(getPost);
-        setPost = JSON.stringify(setPost);
-        const getfinalpost = {
-          post: setPost,
-        };
-        return getfinalpost;
+      resolve: async (parent, args) =>
+      {
+        let setpost
+        await blog.findAll({ where: { userId: args.id }})
+         .then((data)=>{
+             if(data.length===0)
+             {
+              throw new Error("Error");
+             }
+             blogsdata=[]
+             data.map((blog)=>
+             {
+               let datapost={
+                  title:blog.title,
+                  post:blog.post
+               }
+               blogsdata.push(datapost)
+             })
+             setpost=blogsdata
+  
+         })
+         return setpost
       },
     },
+
   }),
 });
 

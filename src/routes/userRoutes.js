@@ -7,15 +7,10 @@ const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const logger = require("../../utils/logger");
 const {
-  authRoleLogin,
-  authBasic,
-  authAdminAccess,
   authToken,
 } = require("../middlewares/authmiddlewares");
 const {
-  validateSignUp,
-  validateLogin,
-  validateChangePassword,
+  userSchemaValidator,blogSchemaValidator
 } = require("../middlewares/JoiValidatemiddleware");
 const { sendEmailSignup, reminder } = require("../../utils/CronSendEmailTo");
 const { mailqueue } = require("../../utils/BullQueue");
@@ -36,98 +31,103 @@ router.get("/homepage", (req, res) => {
 });
 
 //register
-router.post("/register", validateSignUp, async (req, res) => {
-  const { id, email, password, role } = req.body;
-  const alreadyExistUser = await users
-    .findOne({ where: { email } })
-    .catch((err) => {
-      logger.customLogger.log("error", "Error: " + err);
-    });
-  if (alreadyExistUser) {
-    return res.status(200).send("User with Email exists");
+router.post("/register", userSchemaValidator, async (req, res) => {
+  const { email, password, role } = req.body;
+  try
+  {
+    if (!email || !password || !role)
+    {
+      return res.status(400).send("Please enter all fields");
+    } 
+    await users.findOne({ where: { email } })
+      .then(async (ExistUser) => {
+        if (ExistUser) {
+          return res.json({ message: "User with email already exist " });
+        }
+
+        await users.create({
+          email,
+          password,
+          role,
+        })
+        .then(async (value) => {
+          mailqueue(email);
+          getusers = await users.findAll({ where: { role: "basic" } });
+          redisClient.setEx("usersforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
+          res.status(200).send(`Successfully Registered`);
+        });
+      });
   }
-  users
-    .create({
-      id: id,
-      email: email,
-      password: password,
-      role: role,
-    })
-    .then(async (value) => {
-      mailqueue(email);
-      const getusers = await users.findAll({ where: { role: "basic" } });
-      redisClient.setEx(
-        "usersforAdmin",
-        DEFAULT_EXPIRATION,
-        JSON.stringify(getusers)
-      );
-      res.status(200).send("User registered");
-    })
-    .catch((err) => {
-      logger.customLogger.log("error", "Error: " + err);
-    });
+  catch (err)
+  {
+    logger.customLogger.log("error", "Error: ", err);
+    res.status(500).send(err);
+  }
 });
 
 //refreshToken
 router.get("/refreshToken/:id", async (req, res) => {
   const id = req.params.id;
   const user_data = await users.findOne({ where: { id: id } });
-  console.log(user_data);
+
   if (user_data == null) return res.sendStatus(401);
   if (!user_data.refreshtoken) return res.sendStatus(403);
-  jwt.verify(
-    user_data.refreshtoken,
-    process.env.REFRESH_TOKEN_KEY,
-    (err, user) => {
-      console.log(user);
-      if (err) res.sendStatus(403);
-      const accessToken = generateAccessToken({ email: user.email });
-      res.json({ accessToken: accessToken });
-    }
+
+  jwt.verify(user_data.refreshtoken,process.env.REFRESH_TOKEN_KEY,(err, user) =>{
+    if (err) res.sendStatus(403);
+    const accessToken = generateAccessToken({ email: user.email });
+    res.json({ accessToken: accessToken });
+  }
   );
+
 });
 
 //login
-router.post("/login", validateLogin, async (req, res) => {
+router.post("/login", userSchemaValidator, async (req, res) => {
   const { email, password } = req.body;
-  const userWithEmail = await users
-    .findOne({ where: { email: email } })
-    .catch((err) => {
-      logger.customLogger.log("error", "Error: " + err);
-    });
-
-  if (!userWithEmail) {
-    return res.status(200).send("Email or password does not match");
+  try
+  {
+    await users.findOne({ where: { email } })
+      .then(async(userWithEmail)=>{
+        if (await bcrypt.compare(password, userWithEmail.password))
+        {
+          const user = { email: userWithEmail.email };
+          const accessToken = generateAccessToken(user);
+          const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_KEY, {expiresIn: "7d",});
+    
+          await users.update({
+              refreshtoken: refreshToken,
+            },{ where: { id: userWithEmail.id } }
+          );
+          
+          res.status(200).json({
+            message: `Welcome Back`,
+            AccessToken: accessToken,
+            RefreshToken: refreshToken,
+          });
+        }
+        else
+        {
+          res.status(403).send("Email or Password does not match");
+        }
+      })
   }
-  if (await bcrypt.compare(password, userWithEmail.password)) {
-    const user = { id: userWithEmail.id, email: userWithEmail.email };
-    const accessToken = generateAccessToken(user);
-    const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_KEY);
-    users.update(
-      { refreshtoken: refreshToken },
-      { where: { id: userWithEmail.id } }
-    );
-    res
-      .status(200)
-      .json({
-        message: "Welcome Back!",
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-      });
-  } else {
-    return res.status(200).send("Email or password does not match 2");
+  catch(err)
+  {
+    logger.customLogger.log("error", "Error: ", err);
+    res.status(500).send(err);
   }
 });
 
 //changepassword
-router.post("/changepassword", validateChangePassword, async (req, res) => {
+router.post("/changepassword", userSchemaValidator, async (req, res) => {
   const body = req.body;
   const locateEntry = await users.findOne({ where: { email: body.email } });
   const getEntry = locateEntry.toJSON();
   const oldpassword = getEntry.password;
-  console.log(oldpassword)
-  console.log(body.oldpassword)
-  if (await bcrypt.compare(body.oldpassword, oldpassword)) {
+
+  if (await bcrypt.compare(body.oldpassword, oldpassword))
+  {
     const hashedPassword = await bcrypt.hash(body.newpassword, 10);
     users
       .update(
@@ -142,7 +142,9 @@ router.post("/changepassword", validateChangePassword, async (req, res) => {
       .catch((error) => {
         logger.customLogger.log("error", "Error: " + err);
       });
-  } else {
+  }
+  else
+  {
     res.status(400).send("Enter the old password correctly");
   }
 });
@@ -163,13 +165,16 @@ router.get("/feedback/reminder", async (req, res) => {
     attributes: ["email"],
     where: { role: "basic" },
   });
+
   AllEmails = JSON.stringify(AllEmails);
   AllEmails = JSON.parse(AllEmails);
+
   let listEmails = [];
   AllEmails.map((user) => {
     listEmails.push(user["email"]);
   });
   const EmailQueue = new Bull("email-queue");
+
   listEmails.map((email) => {
     const data = {
       Email: email,
@@ -179,6 +184,7 @@ router.get("/feedback/reminder", async (req, res) => {
     };
     EmailQueue.add(data, options);
   });
+
   EmailQueue.process(async (job) => {
     let sub = "User Experience Feedback";
     let msg ="You are requested to fill the feedback form as soon a possible. It will help us to provide a better service ";

@@ -2,62 +2,45 @@ const users = require("../models").users;
 const jwt = require("jsonwebtoken");
 var Joi = require("joi");
 
-function authRoleLogin(role) {
-  return async (req, res, next) => {
-    const locateuser = await users.findOne({
-      where: { email: req.body.email, password: req.body.password, role: role },
-    });
-    if (locateuser) {
-      const getuser = locateuser.toJSON();
+//Verifies Roles
+function authRole(user_role)
+{
+  return async (req, res, next) =>
+  {
+    const user = await users.findOne({ where: { id: req.params.id, role: user_role } });
+    if(user)
+    {
       next();
-    } else {
-      res.send("User doesnt exist or the link is wrong");
+    }
+    else
+    {
+      res.status(404).send('Users not Found')
     }
   };
 }
 
-function authBasic() {
-  return async (req, res, next) => {
-    const locateuser = await users.findOne({ where: { id: req.params.id } });
-    if (locateuser) {
-      const getuser = locateuser.toJSON();
-      if (getuser.role === "basic") {
-        next();
-      } else {
-        res.send("Admin not allowed");
-      }
-    } else {
-      res.send("User doesnt exist");
-    }
-  };
-}
-
-function authAdminAccess() {
-  return async (req, res, next) => {
-    const locateuser = await users.findOne({ where: { id: req.params.id } });
-    if (locateuser) {
-      const getuser = locateuser.toJSON();
-      if (getuser.role === "admin") {
-        next();
-      } else {
-        res.send("User not allowed");
-      }
-    } else {
-      res.send("Admin doesnt exist");
-    }
-  };
-}
-
-function authToken(req, res, next) {
+//Autheticates token
+function authToken(req, res, next)
+{
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
-  if (token == null) return res.sendStatus(401);
-  jwt.verify(token, process.env.ACCESS_TOKEN_KEY, (err, user) => {
-    console.log(err);
-    if (err) return res.sendStatus(403);
+
+  if (token == null)
+  {
+    return res.sendStatus(401);
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_KEY, (err, user) =>
+  {
+    if(err)
+    { 
+      return res.sendStatus(403);
+    }
     req.user = user;
     next();
   });
 }
 
-module.exports = { authRoleLogin, authBasic, authAdminAccess, authToken };
+
+
+module.exports = { authRole, authToken };

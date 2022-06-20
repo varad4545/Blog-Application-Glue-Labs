@@ -5,6 +5,7 @@ const redisClient=require('./redisClient')
 require("dotenv").config();
 const DEFAULT_EXPIRATION = 3600;
 
+//Sends email to users
 async function sendEmailSignup(email,sub,msg) {
   const mailOptions = {
     from: process.env.SEND_EMAIL,
@@ -26,6 +27,7 @@ async function sendEmailSignup(email,sub,msg) {
   });
 }
 
+//Cron for password change email every month
 function sendEmailPassword(emails) {
   cron.schedule("08 17 * * * ", function () {
     emails.map((email) => {
@@ -48,6 +50,7 @@ function sendEmailPassword(emails) {
   });
 }
 
+//Cron for remoinder at midnight
 function reminder(email) {
   cron.schedule("0 0 * * *", function () {
     const mailOptions = {

@@ -6,8 +6,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const logger=require('../../utils/logger')
-const {authToken,authBasic} = require("../middlewares/authmiddlewares");
-const {validateUserPost,validateDeleteUserPost}=require("../middlewares/JoiValidatemiddleware")
+const {authToken,authRole} = require("../middlewares/authmiddlewares");
+const {userSchemaValidator,blogSchemaValidator}=require("../middlewares/JoiValidatemiddleware")
 const {rateLimiter}=require('../../utils/RateLimiter')
 require("dotenv").config();
 require("../auth/passport");
@@ -15,180 +15,149 @@ const redisClient=require('../../utils/redisClient.js')
 const DEFAULT_EXPIRATION=3600
 
 //get individual blogs
-router.get("/basic/getblog/:id", authBasic(), authToken,rateLimiter({secondsWindow:60,allowedHits:5}), async (req, res) => {
-  const id = req.params.id;
-  const body = req.body;
-  let getCacheData = await redisClient.get("blog");
-  if (getCacheData) {
-    console.log("Cache Hit");
-    return res.json(JSON.parse(getCacheData));
-  } else {
-    console.log("Cache Miss");
-    const locateEntry = await blog.findOne({ where: { id: id } });
-    const getEntry = locateEntry.toJSON();
-    const getPost = getEntry.post;
-    var setPost = JSON.parse(getPost);
-    setPost = setPost.filter((user) => {
-      if (user["title"] === body.title) {
-        return 1;
-      }
-    });
-    redisClient.setEx("blog", DEFAULT_EXPIRATION, JSON.stringify(setPost));
-    setPost = JSON.stringify(setPost);
-    res.status(200).send(setPost);
+router.get("/basic/getblog/:id",authRole('basic'), authToken,rateLimiter({secondsWindow:60,allowedHits:5}), async (req, res) => {
+  try
+  {
+    let data = await redisClient.get('blog');
+    if(data)
+    {
+      return res.json(data)
+    }
+    else
+    {
+      await blog.findOne({ where: { 
+        userId: req.params.id, 
+        title: req.body.title 
+      }})
+      .then((data)=>{
+        redisClient.setEx('blog', DEFAULT_EXPIRATION,data.post)
+        res.status(200).send(data.post);
+      })
+    }
+  }
+  catch(err)
+  {
+    logger.customLogger.log('error','Error: ',err)
+    res.status(500).send(err);
   }
 });
 
 //get all blogs of a user
-router.get(
-  "/basic/getallblogs/:id",authBasic(),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    const id = req.params.id;
-    const body = req.body;
-    let getCacheData = await redisClient.get("blogs");
-    if (getCacheData) {
-      console.log("Cache Hit");
-      return res.json(JSON.parse(getCacheData));
-    } else {
-      console.log("Cache Miss");
-      const locateEntry = await blog.findOne({ where: { id: id } });
-      const getEntry = locateEntry.toJSON();
-      const getPost = getEntry.post;
-      var setPost = JSON.parse(getPost);
-      redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
-      res.status(200).send(setPost);
+router.get("/basic/getallblogs/:id",authRole('basic'),authToken,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+    try
+    {
+      let data = await redisClient.get('blogs');
+      if(data)
+      {
+        return res.json(JSON.parse(data))
+      }
+      else
+      {
+        await blog.findAll({ where: { 
+          userId: req.params.id, 
+        }})
+        .then((data)=>{
+            let allPosts = []
+            data.map((item)=>{
+            let postData = {
+            id: item.id,
+            title: item.title,
+            post: item.post
+          }
+          allPosts.push(postData);
+          })
+         redisClient.setEx('blogs', DEFAULT_EXPIRATION,JSON.stringify(allPosts))
+         res.status(200).send(allPosts);
+        })
+      }
+    }
+    catch(err)
+    {
+      logger.customLogger.log('error','Error: ',err)
+      res.status(500).send(err);
     }
   }
 );
 
 //post blogs
-router.post("/basic/postblog/:id",authBasic(),authToken,validateUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+router.post("/basic/postblog/:id",authRole('basic'),authToken,blogSchemaValidator,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+  try
+  {
     const id = req.params.id;
-    const body = req.body;
-    const locateEntry = await blog.findOne({ where: { id: id } });
-    if (locateEntry) {
-      const getEntry = locateEntry.toJSON();
-      const getPost = getEntry.post;
-      var setPost = JSON.parse(getPost);
-      var addObj = { title: body.title, post: body.post };
-      setPost.push(addObj);
-      setPost = JSON.stringify(setPost);
-      blog
-        .update(
-          {
-            id: id,
-            email: getEntry.email,
-            post: setPost,
-          },
-          { where: { id: id } }
-        )
-        .then(async (value) => {
-         const getusers = await blog.findAll();
-         redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
-         redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
-         res.status(200).send("Blog added")
-        })
-        .catch((error) => {
-          logger.customLogger.log('error',"Error: "+error)
-        });
-    } else {
-      const locatefromUser = await users.findOne({ where: { id: id } });
-      const getfromUser = locatefromUser.toJSON();
-      const getEmail = getfromUser.email;
-      var postarray = [];
-      var postobj = { title: body.title, post: body.post };
-      postarray.push(postobj);
-      var pusharray = JSON.stringify(postarray);
-      blog
-        .create({
-          id: id,
-          email: getEmail,
-          post: pusharray,
-        })
-        .then(async (value) => {
-          const getusers = await blog.findAll();
-          redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
-          const getEntry = locateEntry.toJSON();
-          const getPost = getEntry.post;
-          var setPost = JSON.parse(getPost);
-          redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
-          res.status(200).send("Blog posted")
-        })
-        .catch((err) => {
-          logger.customLogger.log('error',"Error: "+err)
-        });
-    }
+    const title = req.body.title;
+    const post = req.body.post;
+
+    await blog.create({
+      userId: id,
+      title,
+      post
+    })
+    .then((data)=>{
+      redisClient.setEx('blogsforAdmin', DEFAULT_EXPIRATION,JSON.stringify(data))
+      redisClient.setEx('blogs', DEFAULT_EXPIRATION,data.post)
+      res.status(200).send("Blog added")
+    })
   }
-);
+  catch(err)
+  {
+    logger.customLogger.log('error','Error: ',err)
+    res.status(500).send(err);
+  }
+});
 
 //delete individual blog
-router.delete("/basic/deleteblog/:id",authBasic(),authToken,validateDeleteUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    const id = req.params.id;
-    const body = req.body;
-    const locateEntry = await blog.findOne({ where: { id: id } });
-    const getEntry = locateEntry.toJSON();
-    const getPost = getEntry.post;
-    var setPost = JSON.parse(getPost);
-    setPost = setPost.filter((user) => {
-      if (user["title"] != body.title) {
-        return 1;
+router.delete("/basic/deleteblog/:id",authRole('basic'),authToken,blogSchemaValidator,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
+  try
+  {
+    await blog.findOne({ 
+      where: { 
+        userId: req.params.id, 
+        title: req.body.title 
       }
-    });
-    setPost = JSON.stringify(setPost);
-    blog
-      .update(
-        {
-          id: id,
-          email: getEntry.email,
-          post: setPost,
-        },
-        { where: { id: id } }
-      )
-      .then((value) => {
-        res.status(200).send("Blog deleted")
+    })
+    .then( async (data)=>{
+      await blog.destroy({ where: { 
+        userId: req.params.id, 
+        title: req.body.title 
+      }})
+      .then((datas)=>{
+        res.status(200).send("Blog deleted ");
       })
-      .catch((error) => {
-        logger.customLogger.log('error',"Error: "+err)
-      });
+    })
   }
-);
+  catch(err)
+  {
+    logger.customLogger.log('error','Error: ',err)
+    res.status(500).send(err);
+  }
+});
 
 //update individual blog
-router.put("/basic/updateblog/:id",authBasic(),authToken,validateUserPost,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) => {
-    const id = req.params.id;
-    const body = req.body;
-    const locateEntry = await blog.findOne({ where: { id: id } });
-    const getEntry = locateEntry.toJSON();
-    const getPost = getEntry.post;
-    var setPost = JSON.parse(getPost);
-    setPost.map((user) => {
-      if (user["title"] === body.title) {
-        user["post"] = body.post;
+router.put("/basic/updateblog/:id",authRole('basic'),authToken,blogSchemaValidator,rateLimiter({secondsWindow:60,allowedHits:5}),async (req, res) =>
+{
+  try
+  {
+    await blog.findOne({ 
+      where: { 
+        userId: req.params.id, 
+        title: req.body.title 
       }
-    });
-    setPost = JSON.stringify(setPost);
-    blog
-      .update(
-        {
-          id: id,
-          email: getEntry.email,
-          post: setPost,
-        },
-        { where: { id: id } }
-      )
-      .then(async(value) => {
-        const getusers = await blog.findAll();
-        redisClient.setEx("blogsforAdmin",DEFAULT_EXPIRATION,JSON.stringify(getusers));
-        const locateEntry = await blog.findOne({ where: { id: id } });
-        const getEntry = locateEntry.toJSON();
-        const getPost = getEntry.post;
-        var setPost = JSON.parse(getPost);
-        redisClient.setEx("blogs", DEFAULT_EXPIRATION, JSON.stringify(getPost));
-        res.status(200).send("Blog updated")
+    })
+    .then( async (data)=>{
+      await blog.update({post:req.body.post},{ where: { 
+        userId: req.params.id, 
+        title: req.body.title 
+      }})
+      .then((datas)=>{
+        res.status(200).send("Blog Updated");
       })
-      .catch((err) => {
-        logger.customLogger.log('error',"Error: "+err)
-      });
+    })
   }
-);
+  catch(err)
+  {
+    logger.customLogger.log('error','Error: ',err)
+    res.status(500).send(err);
+  }
+});
 
 module.exports = router;

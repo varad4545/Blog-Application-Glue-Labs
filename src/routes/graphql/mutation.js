@@ -12,58 +12,84 @@ const users = require("../../models").users;
 const blog = require("../../models").blogposts;
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const logger = require("../../../utils/logger");
-const {blogType,userType,MessageType}=require("./types");
+
+const {MessageType}=require("./types");
 
 
 const RootMutationType = new GraphQLObjectType({
   name: "Mutation",
   description: "Root Mutation",
   fields: () => ({
-    adminupdateusers: {
-      type: userType,
+
+    //admin can update user info
+    adminupdateusers:
+    {
+      type: MessageType,
       description: "Update a particular user",
       args: {
         id: { type: GraphQLNonNull(GraphQLInt) },
         email: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: (parent, args) => {
-        let finduser = users.findOne({ where: { id: args.id, role: "basic" } });
-        if (finduser) {
-          const newbody = {
-            id: args.id,
-            email: args.email,
-          };
-          users.update(newbody, { where: { id: args.id } });
-          let finduserblog = blog.findOne({ where: { id: args.id } });
-          if (finduserblog) {
-            blog.update(newbody, { where: { id: args.id } });
-          }
-        }
 
-        return finduser;
+      resolve: async(parent, args) =>
+      {
+          let msg
+          await users.findOne({ where: { id: args.id, role: "basic" } })
+          .then((data)=>{
+             if(data)
+             {  
+                const newbody ={
+                  id: args.id,
+                  email: args.email,
+                };
+                users.update(newbody, { where: { id: args.id } });
+                msg={ successful: true, message: "User Updated" };
+             }
+             throw new Error("User not found")
+          })
+          .catch(()=>{
+          throw new Error("User not found")
+          })
+
+         return msg;
       },
     },
 
-    admindeleteusers: {
-      type: userType,
+    //admin can delete user info
+    admindeleteusers:
+    {
+      type: MessageType,
       description: "Delete a particular user",
       args: {
         id: { type: GraphQLNonNull(GraphQLInt) },
       },
-      resolve: (parent, args) => {
-        let finduser = users.findOne({ where: { id: args.id, role: "basic" } });
-        if (finduser) {
-          users.destroy({ where: { id: args.id } });
-          let finduserblog = blog.findOne({ where: { id: args.id } });
-          if (finduserblog) {
-            blog.destroy({ where: { id: args.id } });
-          }
-        }
-        return finduser;
+
+      resolve: async(parent, args) =>
+      {
+        let msg
+        await users.findOne({ where: { id: args.id, role: "basic" } })
+        .then(async(data)=>{
+           if(!data)
+           {
+            throw new Error("User not found")  
+           }
+           await blog.findOne({ where: { userId: args.id} }).then(()=>{
+              blog.destroy({where:{ userId: args.id}})
+           })
+           users.destroy({ where: { id: args.id } });
+
+           msg={ successful: true, message: "User Deleted" };
+        })
+        .catch(()=>{
+          throw new Error("User not found")
+        })
+
+        return msg
       },
     },
 
+
+    //Users can post blog
     basicpostblog: {
       type: MessageType,
       description: "Post a blog",
@@ -72,43 +98,28 @@ const RootMutationType = new GraphQLObjectType({
         title: { type: GraphQLNonNull(GraphQLString) },
         post: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parent, args) => {
-        let locateEntry = await blog.findOne({ where: { id: args.id } });
-        if (locateEntry) {
-          const getEntry = locateEntry.toJSON();
-          const getPost = getEntry.post;
-          var setPost = JSON.parse(getPost);
-          var addObj = { title: args.title, post: args.post };
-          setPost.push(addObj);
-          setPost = JSON.stringify(setPost);
-          blog.update(
-            {
-              id: args.id,
-              email: getEntry.email,
-              post: setPost,
-            },
-            { where: { id: args.id } }
-          );
-        } else {
-          const locatefromUser = await users.findOne({
-            where: { id: args.id },
-          });
-          const getfromUser = locatefromUser.toJSON();
-          const getEmail = getfromUser.email;
-          var postarray = [];
-          var postobj = { title: args.title, post: args.post };
-          postarray.push(postobj);
-          var pusharray = JSON.stringify(postarray);
-          blog.create({
-            id: args.id,
-            email: getEmail,
-            post: pusharray,
-          });
-        }
-        return { successful: true, message: "Blog added" };
+
+      resolve: async (parent, args) =>
+      {
+        let msg
+        await blog.create({
+        userId: args.id,
+        title:args.title,
+        post:args.post
+        })
+        .then(()=>
+        {
+          msg={ successful: true, message: "Blog Added" };
+        })
+        .catch(()=>{
+          throw new Error("Blog not added")
+        })
+
+        return msg
       },
     },
 
+    //USers can update blogs
     basicupdateblog: {
       type: MessageType,
       description: "Update a blog",
@@ -117,29 +128,30 @@ const RootMutationType = new GraphQLObjectType({
         title: { type: GraphQLNonNull(GraphQLString) },
         post: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parents, args) => {
-        const locateEntry = await blog.findOne({ where: { id: args.id } });
-        const getEntry = locateEntry.toJSON();
-        const getPost = getEntry.post;
-        var setPost = JSON.parse(getPost);
-        setPost.map((user) => {
-          if (user["title"] === args.title) {
-            user["post"] = args.post;
-          }
-        });
-        setPost = JSON.stringify(setPost);
-        blog.update(
+
+      resolve: async (parents, args) =>
+      {
+        let msg ;
+        await blog.findOne({where: { userId: args.id, title: args.title }
+        })
+        .then(async (user_data)=>{
+          if(!user_data)
           {
-            id: args.id,
-            email: getEntry.email,
-            post: setPost,
-          },
-          { where: { id: args.id } }
-        );
-        return { successful: true, message: "Blog updated" };
+            throw new Error("Post Not Found");
+          }
+
+          await blog.update({post: args.post},{where: { userId: args.id, title: args.title}})
+          .then( async () => {
+            msg = { successful: true, message: "Blog updated successfully" };
+          })
+
+        })
+    
+        return msg
       },
     },
 
+    //Users can delete blogs
     basicdeleteblog: {
       type: MessageType,
       description: "Delete a blog",
@@ -147,58 +159,69 @@ const RootMutationType = new GraphQLObjectType({
         id: { type: GraphQLNonNull(GraphQLInt) },
         title: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parents, args) => {
-        const locateEntry = await blog.findOne({ where: { id: args.id } });
-        const getEntry = locateEntry.toJSON();
-        const getPost = getEntry.post;
-        var setPost = JSON.parse(getPost);
-        setPost = setPost.filter((user) => {
-          if (user["title"] != args.title) {
-            return 1;
-          }
-        });
-        setPost = JSON.stringify(setPost);
-        blog.update(
+
+      resolve: async (parent, args) =>
+      {
+        let msg;
+        await blog.findOne({ where: {userId: args.id, title: args.title}})
+        .then(async(user_data)=>{
+          if(!user_data)
           {
-            id: args.id,
-            email: getEntry.email,
-            post: setPost,
-          },
-          { where: { id: args.id } }
-        );
-        return { successful: true, message: "Blog Deleted" };
+            throw new Error("post Not Found");
+          }
+
+          await blog.destroy({ where: {userId: args.id, title: args.title}})
+          .then((datas)=>{
+            msg = { successful: true, message: "Delete Post Successfully" };
+          }) 
+
+        })
+    
+        return msg
       },
     },
 
+    //Register
     register: {
       type: MessageType,
       description: "User registration",
       args: {
-        id: { type: GraphQLNonNull(GraphQLInt) },
+ 
         email: { type: GraphQLNonNull(GraphQLString) },
         password: { type: GraphQLNonNull(GraphQLString) },
         role: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parents, args) => {
-        const alreadyExistUser = await users
-          .findOne({ where: { email: args.email } })
-          .catch((err) => {
-            logger.customLogger.log("error", "Error: " + err);
-          });
 
-        if (alreadyExistUser) {
-          return { successful: true, message: "User with Email exists" };
-        }
-        users.create({
-          id: args.id,
-          email: args.email,
-          password: args.password,
-          role: args.role,
-        });
-        return { successful: true, message: "User Registered" };
+      resolve: async (parents, args) =>
+      {
+        let msg
+        await users.findOne({ where: { email: args.email } })
+        .then((data)=>{
+            if(data)
+            {
+              msg={ successful: true, message: "User with Email exists" };
+            }
+            else
+            {
+               users.create({
+                 id: args.id,
+                 email: args.email,
+                 password: args.password,
+                 role: args.role,
+               });
+               msg= { successful: true, message: "User Registered" };
+            }
+        })
+        .catch(()=>{
+            throw new Error("Error")
+        })
+
+        return msg
       },
     },
 
+
+    //Login
     login: {
       type: MessageType,
       description: "User Login",
@@ -206,70 +229,36 @@ const RootMutationType = new GraphQLObjectType({
         email: { type: GraphQLNonNull(GraphQLString) },
         password: { type: GraphQLNonNull(GraphQLString) },
       },
-      resolve: async (parents, args) => {
-        const userWithEmail = await users
-          .findOne({ where: { email: args.email } })
-          .catch((err) => {
-            logger.customLogger.log("error", "Error: " + err);
-          });
 
-        if (!userWithEmail) {
-          return {
-            successful: true,
-            message: "Email or password does not match",
-          };
-        }
-        if (await bcrypt.compare(args.password, userWithEmail.password)) {
-          const user = { id: userWithEmail.id, email: userWithEmail.email };
-          const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_KEY);
-          users.update(
-            { refreshtoken: refreshToken },
-            { where: { id: userWithEmail.id } }
-          );
-          return { successful: true, message: "Welcome back" };
-        } else {
-          return {
-            successful: true,
-            message: "Email or password does not match",
-          };
-        }
-      },
-    },
+      resolve: async (parent, args) => {
+        let msg
+        await users.findOne({ where: { email: args.email } })
+        .then(async(userWithEmail)=>{
+    
+          if (!userWithEmail)
+          {
+            throw new Error("User Not Found");
+          }
 
-    changepassword: {
-      type: MessageType,
-      desscription: "Change user password",
-      args: {
-        email: { type: GraphQLNonNull(GraphQLString) },
-        oldpassword: { type: GraphQLNonNull(GraphQLString) },
-        newpassword: { type: GraphQLNonNull(GraphQLString) },
-      },
-      resolve: async (parents, args) => {
-        const locateEntry = await users.findOne({
-          where: { email: args.email },
-        });
-        const getEntry = locateEntry.toJSON();
-        const oldpassword = getEntry.password;
-        const hashedPassword = await bcrypt.hash(args.newpassword, 10);
-        console.log(args.oldpassword);
-        console.log(oldpassword);
-        if (await bcrypt.compare(args.oldpassword, oldpassword)) {
-          users.update(
-            {
-              password: hashedPassword,
-            },
-            { where: { id: getEntry.id } }
-          );
-          return {
-            successful: true,
-            message: "Password updated",
-          };
-        } else {
-          return {
-            successful: true,
-            message: "Enter the old password correctly",
-          };
-        }
+          if (await bcrypt.compare(args.password, userWithEmail.password))
+          {
+            const user = { email: userWithEmail.email };
+            const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECERT, {expiresIn: "8h",});
+            const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_SECERT, {expiresIn: "7d",});
+            
+            users.update({refreshtoken: refreshToken,},
+              {
+              where: { id: userWithEmail.id },
+              }
+            );
+            msg = { successful: true, message: "Successfully Login" };
+          }
+          else
+          {
+            msg = { successful: false, message: "Invalid Email or Password" };
+          }
+        })  
+        return msg;   
       },
     },
 
