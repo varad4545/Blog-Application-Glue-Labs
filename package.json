@@ -5,7 +5,16 @@
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon app.js"
+    "start": "nodemon app.js",
+    "user-model": "npx sequelize-cli model:generate --name users --attributes email:string,password:string,role:string,accesstoken:string,refreshtoken:string",
+    "blog-model": "npx sequelize-cli model:generate --name blogposts --attributes title:string,post:string",
+    "blog-user-association": "npx sequelize-cli migration:generate --name blog-user-association",
+    "user-seed": "npx sequelize-cli seed:generate --name users",
+    "blog-seed": "npx sequelize-cli seed:generate --name blogposts",
+    "seed": "npx sequelize-cli db:seed:all",
+    "migrate": "npx sequelize-cli db:migrate",
+    "down": "npx sequelize-cli db:migrate:undo"
+
   },
   "author": "",
   "license": "ISC",
@@ -22,6 +31,7 @@
     "express-jsdoc": "^1.0.2",
     "graphql": "^15.8.0",
     "graphql-date": "^1.0.3",
+    "graphql-resolvers": "^0.4.2",
     "graphql-subscriptions": "^2.0.0",
     "graphql-tag": "^2.12.6",
     "graphql-yoga": "^2.9.2",

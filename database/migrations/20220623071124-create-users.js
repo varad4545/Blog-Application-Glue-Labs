@@ -17,6 +17,9 @@ module.exports = {
       role: {
         type: Sequelize.STRING
       },
+      accesstoken: {
+        type: Sequelize.STRING
+      },
       refreshtoken: {
         type: Sequelize.STRING
       },

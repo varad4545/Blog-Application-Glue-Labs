@@ -1,3 +1,4 @@
+
 'use strict';
 var bcrypt = require("bcrypt");
 const {
@@ -18,6 +19,7 @@ module.exports = (sequelize, DataTypes) => {
     email: DataTypes.STRING,
     password: DataTypes.STRING,
     role: DataTypes.STRING,
+    accesstoken:DataTypes.STRING,
     refreshtoken: DataTypes.STRING
   }, {
     sequelize,
@@ -35,4 +37,3 @@ module.exports = (sequelize, DataTypes) => {
   });
   return users;
 };
-

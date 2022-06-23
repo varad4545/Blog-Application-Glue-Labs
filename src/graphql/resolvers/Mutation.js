@@ -2,11 +2,15 @@ const users = require("../../models").users;
 const blog = require("../../models").blogposts;
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { combine, combineResolvers}=require('graphql-resolvers');
+const {userSchemaValidator,blogSchemaValidator}=require("../middlewares/joivalidations")
+const {authToken,authRole,authRoleAdmin}=require('../middlewares/authmiddlewares')
 
 const Mutationresolvers={
     Mutation:
     {
-        async adminupdateusers(parents,args)
+        //admin can update user info
+        adminupdateusers: combineResolvers(authToken,authRoleAdmin('admin'),userSchemaValidator,async (parents,args)=>
         {
             let msg
             await users.findOne({ where: { id: args.id, role: "basic" } })
@@ -30,9 +34,10 @@ const Mutationresolvers={
             })
 
            return msg;
-        },
-
-        async admindeleteusers(parents,args)
+        }),
+       
+        //admin can delete user info
+        admindeleteusers:combineResolvers(authToken,userSchemaValidator,authRoleAdmin('admin'),async (parents,args)=>
         {
           let msg
           await users.findOne({ where: { id: args.id, role: "basic" } })
@@ -53,9 +58,10 @@ const Mutationresolvers={
           })
   
           return msg
-        },
-
-        async basicpostblog(parents,args)
+        }),
+     
+        //users can post blogs
+        basicpostblog:combineResolvers(authToken,blogSchemaValidator,authRole("basic"),async(parents,args)=>
         {
           let msg
           await users.findOne({id:args.id})
@@ -76,9 +82,10 @@ const Mutationresolvers={
           })
 
           return msg
-        },
+        }),
 
-        async basicupdateblog(parents,args)
+         //users can update blogs
+        basicupdateblog:combineResolvers(authToken,blogSchemaValidator ,authRole("basic"),async (parents,args)=>
         {
           let msg ;
           await blog.findOne({where: { userId: args.id, title: args.title }})
@@ -98,9 +105,10 @@ const Mutationresolvers={
           })
       
           return msg  
-        },
+        }),
 
-        async basicdeleteblog(parents,args)
+        //users can delete blogs
+        basicdeleteblog:combineResolvers(authToken,blogSchemaValidator,authRole("basic"),async(parents,args)=>
         {
            let msg;
            await blog.findOne({ where: {userId: args.id, title: args.title}})
@@ -117,8 +125,9 @@ const Mutationresolvers={
            })
       
           return msg
-        },
+        }),
 
+        //register/Signup
         async register(parents,args)
         {
           let msg
@@ -147,6 +156,7 @@ const Mutationresolvers={
           return msg
         },
 
+        //Login
         async login(parents,args)
         {
           let msg
@@ -162,7 +172,7 @@ const Mutationresolvers={
               const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_KEY, {expiresIn: "8h",});
               const refreshToken = jwt.sign(user, process.env.REFRESH_TOKEN_KEY, {expiresIn: "7d",});
               
-              users.update({refreshtoken: refreshToken,},
+              users.update({accesstoken:accessToken,refreshtoken: refreshToken,},
                 {
                 where: { id: userWithEmail.id },
                 }
@@ -176,7 +186,65 @@ const Mutationresolvers={
           }) 
 
           return msg;
-        }
+        },
+
+        //generate new accessToken using refreshToken
+        async refreshToken(parents,args)
+        {
+          let msg
+          await users.findOne({ where: { id: args.id } })
+          .then((user_data)=>
+          {
+            if(!user_data.refreshtoken)
+            {
+              throw new Error("Not Available");
+            }
+            const userwithmail = { email: user_data.email };
+
+            jwt.verify(user_data.refreshtoken,process.env.REFRESH_TOKEN_KEY,(err, user) =>
+               {
+                 if (err)
+                 {
+                   throw new Error("Refresh token not valid");
+                 }
+                 const accessToken=jwt.sign(userwithmail, process.env.ACCESS_TOKEN_KEY, {expiresIn: "8h",});
+                 users.update({ accesstoken: accessToken },{
+                 where: {
+                  id: args.id
+                 },
+                 })
+                 msg = { successful: false, message: "New accessToken" };          
+              }
+            );
+          })
+          .catch(()=>{
+            throw new Error("User not found");
+          })
+          return msg
+        },
+        
+        //logout
+        logout: combineResolvers(authToken, async (parent,args) =>
+        {
+          let msg;
+          await users.findOne({ where: { id: args.id } })
+          .then(async(user_data)=>{
+            if (user_data.refreshtoken) {
+              users.update({ 
+                refreshtoken: null, 
+                accesstoken: null 
+              }, { 
+                where: { id: args.id } 
+              });
+            }
+            msg = { successful: true, message: "Successfully Logout" };
+          })
+          .catch(()=>{
+            throw new Error("User not found")
+          })
+          return msg
+        })
+         
     }
 }
 module.exports={Mutationresolvers}

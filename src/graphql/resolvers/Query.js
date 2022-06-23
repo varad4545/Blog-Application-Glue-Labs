@@ -1,26 +1,29 @@
 const users = require("../../models").users;
 const blog = require("../../models").blogposts;
-
+const {authToken,authRole,authRoleAdmin}=require('../middlewares/authmiddlewares')
+const {combineResolvers}=require('graphql-resolvers');
 
 const Queryresolvers={
     Query:
     {
-        async admingetbasicusers()
+        //admin can access all basic user info
+        admingetbasicusers:combineResolvers(authToken,authRole("admin"),async()=>
         {
-           let getusers;
-           await users.findAll({ where: { role: "basic" } })
-           .then((data)=>{
-           if(data.length===0)
-           {
-             throw new Error("No users Found");
-           }
-           getusers=data
-           })
+          let getusers;
+          await users.findAll({ where: { role: "basic" } })
+          .then((data)=>{
+          if(data.length===0)
+          {
+            throw new Error("No users Found");
+          }
+          getusers=data
+          })
 
-           return getusers
-        },
-
-        async admingetallblogs()
+          return getusers
+        }),
+     
+        //admin can access all basic user blogs
+        admingetallblogs:combineResolvers(authToken,authRole("admin"),async()=>
         {
            let setpost
            await blog.findAll()
@@ -33,9 +36,10 @@ const Queryresolvers={
            })
 
           return setpost
-        },
+        }),
 
-        async basicgetblog(parents,args)
+        //users can access their individual blog
+        basicgetblog:combineResolvers(authToken ,authRole("basic"),async(parents,args)=>
         {
           let setPost
           await blog.findOne({ where: { userId: args.id, title:args.title } }).
@@ -48,9 +52,10 @@ const Queryresolvers={
           })
 
           return setPost
-        },
+        }),
 
-        async basicallBlogs(parents,args)
+        //users can access all their blogs at a time
+        basicallBlogs:combineResolvers(authToken,authRole("basic"),async (parents,args)=>
         {
           let setpost=[]
           await blog.findAll({ where: { userId: args.id }})
@@ -72,7 +77,7 @@ const Queryresolvers={
     
            })
            return setpost
-        }
+        })
 
     },
 }

@@ -37,8 +37,8 @@ const typeDefs=gql`
   #Query
   type Query
   {
-     admingetbasicusers:[userType!]!
-     admingetallblogs:[blogType!]!
+     admingetbasicusers(id:Int!):[userType!]!
+     admingetallblogs(id:Int!):[blogType!]!
      basicgetblog(id:Int!,title:String!):blogType
      basicallBlogs(id:Int!):[getallblogsType!]!
   }
@@ -46,13 +46,15 @@ const typeDefs=gql`
   #Mutation
   type Mutation
   {
-     adminupdateusers(id:Int!,email:String!):MessageType
-     admindeleteusers(id:Int!):MessageType
+     adminupdateusers(adminid:Int!,id:Int!,email:String!):MessageType
+     admindeleteusers(adminid:Int!,id:Int!):MessageType
      basicpostblog(id:Int!,title:String!,post:String!):MessageType
      basicupdateblog(id:Int!,title:String!,post:String!):MessageType
      basicdeleteblog(id:Int!,title:String!):MessageType
      register(email:String!,password:String!,role:String!):MessageType
      login(email:String!,password:String!):MessageType
+     refreshToken(id:Int!):MessageType
+     logout(id:Int!):MessageType
   }
 `
 module.exports={typeDefs}
